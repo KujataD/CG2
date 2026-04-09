@@ -1,10 +1,13 @@
 #include <Windows.h>
+#include <chrono>
 #include <cstdint>
+#include <filesystem> // ファイルやディレクトリに関する操作を行うライブラリ
 #include <format>
+#include <fstream>
 #include <string>
 
 // 出力ウィンドウに文字を出す
-void Log(const std::string& message);
+void Log(std ::ostream& os, const std ::string& message);
 
 // ウィンドウプロシージャ
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -17,8 +20,27 @@ std::string ConvertString(const std::wstring& str);
 
 // Windowsアプリでのエントリーポイント(main関数)
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
-	// 出力ウィンドウへの文字出力
-	Log(ConvertString(std::format(L"Hello,DirectX!\n")));
+
+	// ログのディレクトリを用意
+	std::filesystem::create_directory("logs");
+
+#pragma region 現在時刻でログファイルを生成する
+
+	// 現在時刻を取得(UTC時刻)
+	std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+	// ログファイルの名前にコンマ何秒はいらないので、削って秒にする
+	std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds> nowSeconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
+	// 日本時間(PCの設定時間)に変換
+	std::chrono::zoned_time localTime{std::chrono::current_zone(), nowSeconds};
+	// formatを使って年月日_時分秒の文字列に変換
+	std::string dateString = std::format("{:%Y%m%d_%H%M%S}", localTime);
+	// 時刻を使ってファイル名を決定
+	std::string logFilePath = std::string("logs/") + dateString + ".log";
+	// ファイルを作って書き込み準備
+	std::ofstream logStream(logFilePath);
+
+#pragma endregion
+
 
 #pragma region ウィンドウサイズを決める
 
@@ -86,7 +108,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	return 0;
 }
 
-void Log(const std::string& message) { OutputDebugStringA(message.c_str()); }
+void Log(std::ostream& os, const std::string& message) {
+	os << message << std::endl;
+	OutputDebugStringA(message.c_str());
+}
 
 LRESULT WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	// メッセージに応じてゲーム固有の処理を行う
