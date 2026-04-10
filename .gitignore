@@ -5,7 +5,9 @@
 
 # Add files
 *.log
-/logs
+logs/
+*.dmp
+Dumps/
 
 # User-specific files
 *.rsuser
