@@ -8,6 +8,7 @@
 logs/
 *.dmp
 Dumps/
+imgui.ini
 
 # User-specific files
 *.rsuser
