@@ -653,7 +653,6 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			vertexDataSphere[startIndex + 2].position.w = 1.0f;
 			vertexDataSphere[startIndex + 2].texcoord.x = u1;
 			vertexDataSphere[startIndex + 2].texcoord.y = v0;
-
 			vertexDataSphere[startIndex + 2].normal.x = vertexDataSphere[startIndex + 2].position.x;
 			vertexDataSphere[startIndex + 2].normal.y = vertexDataSphere[startIndex + 2].position.y;
 			vertexDataSphere[startIndex + 2].normal.z = vertexDataSphere[startIndex + 2].position.z;
@@ -715,17 +714,41 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 #pragma endregion
 
+#pragma region SpriteのIndexResource/IndexBufferView(IBV)
+	ID3D12Resource* indexResourceSprite = CreateBufferResource(device, sizeof(uint32_t) * 6);
+
+	D3D12_INDEX_BUFFER_VIEW indexBufferViewSprite{};
+	// リソースの先頭のアドレスから使う
+	indexBufferViewSprite.BufferLocation = indexResourceSprite->GetGPUVirtualAddress();
+	// 使用するリソースのサイズはインデックス6つ分のサイズ
+	indexBufferViewSprite.SizeInBytes = sizeof(uint32_t) * 6;
+	// インデックスはuint32_tとする
+	indexBufferViewSprite.Format = DXGI_FORMAT_R32_UINT;
+
+	// インデックスリソースにデータを書き込む
+	uint32_t* indexDataSprite = nullptr;
+	indexResourceSprite->Map(0, nullptr, reinterpret_cast<void**>(&indexDataSprite));
+
+	indexDataSprite[0] = 0;
+	indexDataSprite[1] = 1;
+	indexDataSprite[2] = 2;
+	indexDataSprite[3] = 1;
+	indexDataSprite[4] = 3;
+	indexDataSprite[5] = 2;
+
+#pragma endregion
+
 #pragma region SpriteのVertexResource
 
 	// Sprite用の頂点リソースを作る
-	ID3D12Resource* vertexResourceSprite = CreateBufferResource(device, sizeof(VertexData) * 6);
+	ID3D12Resource* vertexResourceSprite = CreateBufferResource(device, sizeof(VertexData) * 4);
 
 	// 頂点バッファビューを作成する
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferViewSprite{};
 	// リソースの先頭のアドレスから使う
 	vertexBufferViewSprite.BufferLocation = vertexResourceSprite->GetGPUVirtualAddress();
-	// 使用するリソースのサイズは頂点6つ分のサイズ
-	vertexBufferViewSprite.SizeInBytes = sizeof(VertexData) * 6;
+	// 使用するリソースのサイズは頂点4つ分のサイズ
+	vertexBufferViewSprite.SizeInBytes = sizeof(VertexData) * 4;
 	// 1頂点あたりのサイズ
 	vertexBufferViewSprite.StrideInBytes = sizeof(VertexData);
 
@@ -734,20 +757,14 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 #pragma region Spriteの頂点データ
 	VertexData* vertexDataSprite = nullptr;
 	vertexResourceSprite->Map(0, nullptr, reinterpret_cast<void**>(&vertexDataSprite));
-	// 1枚目の三角形
 	vertexDataSprite[0].position = {0.0f, 360.0f, 0.0f, 1.0f}; // 左下
 	vertexDataSprite[0].texcoord = {0.0f, 1.0f};
 	vertexDataSprite[1].position = {0.0f, 0.0f, 0.0f, 1.0f}; // 左上
 	vertexDataSprite[1].texcoord = {0.0f, 0.0f};
 	vertexDataSprite[2].position = {640.0f, 360.0f, 0.0f, 1.0f}; // 右下
 	vertexDataSprite[2].texcoord = {1.0f, 1.0f};
-	// 2枚目の三角形
-	vertexDataSprite[3].position = {0.0f, 0.0f, 0.0f, 1.0f}; // 左上
-	vertexDataSprite[3].texcoord = {0.0f, 0.0f};
-	vertexDataSprite[4].position = {640.0f, 0.0f, 0.0f, 1.0f}; // 右上
-	vertexDataSprite[4].texcoord = {1.0f, 0.0f};
-	vertexDataSprite[5].position = {640.0f, 360.0f, 0.0f, 1.0f}; // 右下
-	vertexDataSprite[5].texcoord = {1.0f, 1.0f};
+	vertexDataSprite[3].position = {640.0f, 0.0f, 0.0f, 1.0f}; // 右上
+	vertexDataSprite[3].texcoord = {1.0f, 0.0f};
 
 #pragma endregion
 
@@ -1144,11 +1161,17 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			// Spriteの描画。変更が必要なものだけ変更する
 			commandList->SetGraphicsRootConstantBufferView(0, materialResourceSprite->GetGPUVirtualAddress());
 			commandList->IASetVertexBuffers(0, 1, &vertexBufferViewSprite); // VBVを設定
+			// ↓↓↓
+			// Indexに変更
+			commandList->IASetIndexBuffer(&indexBufferViewSprite);
 			// TransformationMatrixCBufferの場所を設定
 			commandList->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceSprite->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
 			// 描画!(DrawCall/ドローコール)
-			commandList->DrawInstanced(6, 1, 0, 0);
+			//commandList->DrawInstanced(6, 1, 0, 0);
+			// ↓↓↓
+			// Indexに変更
+			commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
 #pragma endregion
 
@@ -1157,7 +1180,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			commandList->SetGraphicsRootConstantBufferView(0, materialResourceSphere->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceSphere->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootDescriptorTable(2, useMonsterBall ? textureSrvHandleGPU2 : textureSrvHandleGPU);
-			commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress()); 
+			commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
 			commandList->IASetVertexBuffers(0, 1, &vertexBufferViewSphere);
 			commandList->DrawInstanced(6 * kSubdivision * kSubdivision, 1, 0, 0);
 
