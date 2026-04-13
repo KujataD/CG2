@@ -12,6 +12,7 @@
 #include <vector>
 
 // myHeader
+#include "Matrix3x3.h"
 #include "Matrix4x4.h"
 #include "Vector2.h"
 #include "Vector3.h"
@@ -56,6 +57,8 @@ struct VertexData {
 struct Material {
 	Vector4 color;
 	int32_t enableLighting;
+	float padding[3];
+	Matrix4x4 uvTransform;
 };
 
 struct TransformationMatrix {
@@ -590,6 +593,25 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	directionalLightData->intensity = 1.0f;
 #pragma endregion
 
+#pragma region カメラ
+
+	Transform cameraTransform{
+	    {1.0f, 1.0f, 1.0f  },
+        {0.0f, 0.0f, 0.0f  },
+        {0.0f, 0.0f, -10.0f}
+    };
+
+#pragma endregion
+
+#pragma region uvTransform
+
+	Transform uvTransformSprite{
+	    {1.0f, 1.0f, 1.0f},
+        {0.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 0.0f}
+    };
+#pragma endregion
+
 #pragma region Sphereのリソース群の作成
 
 	const uint32_t kSubdivision = 16;
@@ -711,6 +733,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	materialResourceSphere->Map(0, nullptr, reinterpret_cast<void**>(&materialDataSphere));
 	materialDataSphere->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 	materialDataSphere->enableLighting = true;
+	materialDataSphere->uvTransform = Matrix4x4::MakeIdentity();
 
 #pragma endregion
 
@@ -795,6 +818,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	// 色データを入力
 	materialDataSprite->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 	materialDataSprite->enableLighting = false;
+	materialDataSprite->uvTransform = Matrix4x4::MakeIdentity();
 #pragma endregion
 
 #pragma region VertexResource,VertexBufferViewを作成する
@@ -820,6 +844,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	// 色データを入力
 	materialData->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 	materialData->enableLighting = false;
+	materialData->uvTransform = Matrix4x4::MakeIdentity();
 #pragma endregion
 
 #pragma region TransformationMatrix用Resourceを作る
@@ -838,12 +863,6 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	    {1.0f, 1.0f, 1.0f},
         {0.0f, 0.0f, 0.0f},
         {0.0f, 0.0f, 0.0f}
-    };
-
-	Transform cameraTransform{
-	    {1.0f, 1.0f, 1.0f  },
-        {0.0f, 0.0f, 0.0f  },
-        {0.0f, 0.0f, -10.0f}
     };
 #pragma endregion
 
@@ -1061,6 +1080,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			Matrix4x4 worldViewProjectionMatrixSprite = worldMatrixSprite * viewMatrixSprite * projectionMatrixSprite;
 			transformationMatrixDataSprite->WVP = worldViewProjectionMatrixSprite;
 			transformationMatrixDataSprite->World = worldMatrixSprite;
+			Matrix4x4 uvTransformMatrix = Matrix4x4::MakeAffineMatrix(uvTransformSprite.scale, uvTransformSprite.rotate, uvTransformSprite.translate);
+			materialDataSprite->uvTransform = uvTransformMatrix;
 
 #pragma endregion
 
@@ -1082,6 +1103,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			ImGui::ColorEdit3("DirectionalLight Color", &directionalLightData->color.x);
 			ImGui::SliderFloat3("DirectionalLight Direction", &directionalLightData->direction.x, -float(std::numbers::pi_v<float> * 2), float(std::numbers::pi_v<float> * 2), "%0.3f");
 			ImGui::DragFloat("DirectionalLight Intensity", &directionalLightData->intensity, 0.05f);
+			ImGui::DragFloat2("UVTranslate", &uvTransformSprite.translate.x, 0.01f, -10.0f, 10.0f);
+			ImGui::DragFloat2("UVScale", &uvTransformSprite.scale.x, 0.01f, -10.0f, 10.0f);
+			ImGui::SliderAngle("UVRotate", &uvTransformSprite.rotate.z);
 			ImGui::End();
 #endif // USE_IMGUI
 
@@ -1168,7 +1192,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			commandList->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceSprite->GetGPUVirtualAddress());
 			commandList->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
 			// 描画!(DrawCall/ドローコール)
-			//commandList->DrawInstanced(6, 1, 0, 0);
+			// commandList->DrawInstanced(6, 1, 0, 0);
 			// ↓↓↓
 			// Indexに変更
 			commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
