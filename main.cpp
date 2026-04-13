@@ -171,6 +171,9 @@ void SoundUnload(SoundData* soundData);
 void SoundPlayWave(IXAudio2* xAudio2, const SoundData& soundData);
 
 MaterialData LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename);
+
+Vector2 GetMousePos(HWND hwnd);
+
 #pragma endregion
 
 // Windowsアプリでのエントリーポイント(main関数)
@@ -355,6 +358,17 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	// 排他制御レベルのセット
 	hr = keyboard->SetCooperativeLevel(hwnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY);
 	assert(SUCCEEDED(hr));
+
+	// マウスデバイスの生成
+	IDirectInputDevice8* mouse = nullptr;
+	hr = directInput->CreateDevice(GUID_SysMouse, &mouse, NULL);
+	assert(SUCCEEDED(hr));
+
+	// 入力データ形式セット
+	hr = mouse->SetDataFormat(&c_dfDIMouse2);
+
+	// 排他制御レベルのセット
+	mouse->SetCooperativeLevel(hwnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
 
 #pragma endregion
 
@@ -970,6 +984,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	BYTE key[256] = {};
 	BYTE preKey[256] = {};
 
+	// マウス入力を受け止める箱
+	DIMOUSESTATE2 mouseState = {};
+	DIMOUSESTATE2 preMouseState = {};
+
 	// モンスターボールの
 	bool useMonsterBall = true;
 
@@ -997,6 +1015,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			ImGui::NewFrame();
 #endif // USE_IMGUI
 
+#pragma region DirectInput更新
+
 			// キーボード情報の取得開始
 			keyboard->Acquire();
 
@@ -1004,12 +1024,21 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			memcpy(preKey, key, 256);
 			keyboard->GetDeviceState(sizeof(key), key);
 
+			// マウス情報の取得開始
+			mouse->Acquire();
+
+			// 全マウスの入力状態を取得する
+			preMouseState = mouseState;
+			mouse->GetDeviceState(sizeof(mouseState), &mouseState);
+
+#pragma endregion
+
 			///
 			/// ↓↓↓ 更新処理ここから ↓↓↓
 			///
 
 			// キー入力確認
-			if (key[DIK_0] && !preKey[DIK_0]) {
+			if (mouseState.rgbButtons[0] && !preMouseState.rgbButtons[0]) {
 				SoundPlayWave(xAudio2.Get(), soundData1);
 				isPlayingAudio = true;
 			}
@@ -1042,14 +1071,17 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 #pragma endregion
 
 #ifdef USE_IMGUI
+			Vector2 mousePos = GetMousePos(hwnd);
+
 			ImGui::Begin("Debug Window");
+			ImGui::Text("mousePosX : %f, mousePosY : %f", mousePos.x, mousePos.y);
 			ImGui::DragFloat3("CameraTranslate", &cameraTransform.translate.x, 0.01f);
-			ImGui::SliderFloat("CameraRotationX", &cameraTransform.rotate.x, -float(std::numbers::pi_v<float> * 2), float(std::numbers::pi_v<float> * 2), "%0.3f");
-			ImGui::SliderFloat("CameraRotationY", &cameraTransform.rotate.y, -float(std::numbers::pi_v<float> * 2), float(std::numbers::pi_v<float> * 2), "%0.3f");
-			ImGui::SliderFloat("CameraRotationZ", &cameraTransform.rotate.z, -float(std::numbers::pi_v<float> * 2), float(std::numbers::pi_v<float> * 2), "%0.3f");
+			ImGui::SliderFloat("CameraRotationX", &cameraTransform.rotate.x, -float(std::numbers::pi_v<float> * 2), float(std::numbers::pi_v<float> * 2), "%0.003f");
+			ImGui::SliderFloat("CameraRotationY", &cameraTransform.rotate.y, -float(std::numbers::pi_v<float> * 2), float(std::numbers::pi_v<float> * 2), "%0.003f");
+			ImGui::SliderFloat("CameraRotationZ", &cameraTransform.rotate.z, -float(std::numbers::pi_v<float> * 2), float(std::numbers::pi_v<float> * 2), "%0.003f");
 			ImGui::Checkbox("useMonsterBall", &useMonsterBall);
 			ImGui::ColorEdit3("DirectionalLight Color", &directionalLightData->color.x);
-			ImGui::SliderFloat3("DirectionalLight Direction", &directionalLightData->direction.x, -float(std::numbers::pi_v<float> * 2), float(std::numbers::pi_v<float> * 2), "%0.3f");
+			ImGui::SliderFloat3("DirectionalLight Direction", &directionalLightData->direction.x, -float(std::numbers::pi_v<float> * 2), float(std::numbers::pi_v<float> * 2), "%0.03f");
 			ImGui::DragFloat("DirectionalLight Intensity", &directionalLightData->intensity, 0.05f);
 			ImGui::DragFloat2("UVTranslate", &uvTransformSprite.translate.x, 0.01f, -10.0f, 10.0f);
 			ImGui::DragFloat2("UVScale", &uvTransformSprite.scale.x, 0.01f, -10.0f, 10.0f);
@@ -1566,6 +1598,17 @@ MaterialData LoadMaterialTemplateFile(const std::string& directoryPath, const st
 		}
 	}
 	return materialData;
+}
+
+Vector2 GetMousePos(HWND hwnd) {
+	POINT mousePoint;
+	// マウスカーソルのスクリーン座標を取得
+	GetCursorPos(&mousePoint);
+
+	// スクリーン座標を指定のウィンドウのクライアント領域での座標に変換
+	ScreenToClient(hwnd, &mousePoint);
+
+	return Vector2{static_cast<float>(mousePoint.x), static_cast<float>(mousePoint.y)};
 }
 
 ModelData LoadObjFile(const std::string& directoryPath, const std::string& filename) {
