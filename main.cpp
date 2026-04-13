@@ -20,6 +20,11 @@
 #include "Vector3.h"
 #include "Vector4.h"
 
+// dinput
+#define DIRECTINPUT_VERSION 0x0800 // DirectInputのバージョン指定
+#include <dinput.h>
+#pragma comment(lib, "dinput8.lib")
+
 // lib link
 #include <d3d12.h>
 #include <dbghelp.h> //Debug用のあれやこれやを使えるようにする
@@ -328,6 +333,28 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	// デバイスの生成がうまくいかなかったので起動できない
 	assert(device != nullptr);
 	Log(logStream, ConvertString(L"Complete create D3D12Device !!! \n")); // 初期化完了のログをだす
+
+#pragma endregion
+
+#pragma region DirectInputの初期化
+
+	// DirectInputの初期化
+	IDirectInput8* directInput = nullptr;
+	hr = DirectInput8Create(wc.hInstance, DIRECTINPUT_VERSION, IID_IDirectInput8, (void**)&directInput, nullptr);
+	assert(SUCCEEDED(hr));
+
+	// キーボードデバイスの生成
+	IDirectInputDevice8* keyboard = nullptr;
+	hr = directInput->CreateDevice(GUID_SysKeyboard, &keyboard, NULL);
+	assert(SUCCEEDED(hr));
+
+	// 入力データ形式のセット
+	hr = keyboard->SetDataFormat(&c_dfDIKeyboard); // 標準形式
+	assert(SUCCEEDED(hr));
+
+	// 排他制御レベルのセット
+	hr = keyboard->SetCooperativeLevel(hwnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY);
+	assert(SUCCEEDED(hr));
 
 #pragma endregion
 
@@ -939,6 +966,11 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 #pragma region ゲーム内で使う汎用変数群
 
+	// キー入力の箱
+	BYTE key[256] = {};
+	BYTE preKey[256] = {};
+
+	// モンスターボールの
 	bool useMonsterBall = true;
 
 	// 音声読み込み
@@ -965,11 +997,19 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			ImGui::NewFrame();
 #endif // USE_IMGUI
 
+			// キーボード情報の取得開始
+			keyboard->Acquire();
+
+			// 全キーの入力状態を取得する
+			memcpy(preKey, key, 256);
+			keyboard->GetDeviceState(sizeof(key), key);
+
 			///
 			/// ↓↓↓ 更新処理ここから ↓↓↓
 			///
 
-			if (!isPlayingAudio) {
+			// キー入力確認
+			if (key[DIK_0] && !preKey[DIK_0]) {
 				SoundPlayWave(xAudio2.Get(), soundData1);
 				isPlayingAudio = true;
 			}
