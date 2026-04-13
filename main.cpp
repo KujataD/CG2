@@ -19,11 +19,14 @@
 #include "Vector2.h"
 #include "Vector3.h"
 #include "Vector4.h"
+#include "Input.h"
+#include "DebugCamera.h"
 
 // dinput
 #define DIRECTINPUT_VERSION 0x0800 // DirectInputのバージョン指定
 #include <dinput.h>
 #pragma comment(lib, "dinput8.lib")
+#pragma comment(lib, "dxguid.lib")
 
 // lib link
 #include <d3d12.h>
@@ -117,6 +120,12 @@ struct SoundData {
 	unsigned int bufferSize;
 };
 
+// 列挙型
+enum class CameraState{
+	kMain,
+	kDebug,
+};
+
 #pragma region 便利関数群
 
 // 出力ウィンドウに文字を出す
@@ -171,8 +180,6 @@ void SoundUnload(SoundData* soundData);
 void SoundPlayWave(IXAudio2* xAudio2, const SoundData& soundData);
 
 MaterialData LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename);
-
-Vector2 GetMousePos(HWND hwnd);
 
 #pragma endregion
 
@@ -341,34 +348,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 #pragma region DirectInputの初期化
 
-	// DirectInputの初期化
-	IDirectInput8* directInput = nullptr;
-	hr = DirectInput8Create(wc.hInstance, DIRECTINPUT_VERSION, IID_IDirectInput8, (void**)&directInput, nullptr);
-	assert(SUCCEEDED(hr));
-
-	// キーボードデバイスの生成
-	IDirectInputDevice8* keyboard = nullptr;
-	hr = directInput->CreateDevice(GUID_SysKeyboard, &keyboard, NULL);
-	assert(SUCCEEDED(hr));
-
-	// 入力データ形式のセット
-	hr = keyboard->SetDataFormat(&c_dfDIKeyboard); // 標準形式
-	assert(SUCCEEDED(hr));
-
-	// 排他制御レベルのセット
-	hr = keyboard->SetCooperativeLevel(hwnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY);
-	assert(SUCCEEDED(hr));
-
-	// マウスデバイスの生成
-	IDirectInputDevice8* mouse = nullptr;
-	hr = directInput->CreateDevice(GUID_SysMouse, &mouse, NULL);
-	assert(SUCCEEDED(hr));
-
-	// 入力データ形式セット
-	hr = mouse->SetDataFormat(&c_dfDIMouse2);
-
-	// 排他制御レベルのセット
-	mouse->SetCooperativeLevel(hwnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+	Kujaku::Input::Init(hr, wc, hwnd);
 
 #pragma endregion
 
@@ -737,7 +717,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	materialDataModel->uvTransform = Matrix4x4::MakeIdentity();
 
 	// モデル読み込み
-	ModelData modelData = LoadObjFile("resources", "plane.obj");
+	ModelData modelData = LoadObjFile("resources", "axis.obj");
 
 	// 頂点リソースを作る
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResourceModel = CreateBufferResource(device.Get(), sizeof(VertexData) * modelData.vertices.size());
@@ -978,15 +958,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 #endif // USE_IMGUI
 #pragma endregion
 
+
+
 #pragma region ゲーム内で使う汎用変数群
 
-	// キー入力の箱
-	BYTE key[256] = {};
-	BYTE preKey[256] = {};
-
-	// マウス入力を受け止める箱
-	DIMOUSESTATE2 mouseState = {};
-	DIMOUSESTATE2 preMouseState = {};
 
 	// モンスターボールの
 	bool useMonsterBall = true;
@@ -996,6 +971,13 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 	// 音声再生
 	bool isPlayingAudio = false;
+
+	// デバッグカメラ
+	DebugCamera debugCamera;
+	debugCamera.Init(cameraTransform.rotate, cameraTransform.translate);
+	
+	// カメラ切り替え
+	CameraState cameraState = CameraState::kDebug;
 
 #pragma endregion
 
@@ -1016,21 +998,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 #endif // USE_IMGUI
 
 #pragma region DirectInput更新
-
-			// キーボード情報の取得開始
-			keyboard->Acquire();
-
-			// 全キーの入力状態を取得する
-			memcpy(preKey, key, 256);
-			keyboard->GetDeviceState(sizeof(key), key);
-
-			// マウス情報の取得開始
-			mouse->Acquire();
-
-			// 全マウスの入力状態を取得する
-			preMouseState = mouseState;
-			mouse->GetDeviceState(sizeof(mouseState), &mouseState);
-
+			Kujaku::Input::Update();
 #pragma endregion
 
 			///
@@ -1038,12 +1006,23 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			///
 
 			// キー入力確認
-			if (mouseState.rgbButtons[0] && !preMouseState.rgbButtons[0]) {
+			if (Kujaku::Input::GetMouse(0) && !Kujaku::Input::GetPreMouse(0)) {
 				SoundPlayWave(xAudio2.Get(), soundData1);
 				isPlayingAudio = true;
 			}
 
-			Matrix4x4 cameraMatrix = Matrix4x4::MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate);
+			// カメラのビュー行列
+			Matrix4x4 cameraViewMatrix;
+
+			// デバッグカメラの更新
+			debugCamera.Update();
+
+			// デバッグカメラで描画
+			if (cameraState == CameraState::kDebug) {
+				cameraViewMatrix = debugCamera.GetViewMatrix();
+			} else {
+				cameraViewMatrix = Matrix4x4::Inverse(Matrix4x4::MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate));
+			}
 
 #pragma region SpriteのWVP
 			// Sprite用のWorldViewProjectionMatrixを作る
@@ -1062,7 +1041,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 			transformModel.rotate.y += 0.02f;
 			Matrix4x4 worldMatrixModel = Matrix4x4::MakeAffineMatrix(transformModel.scale, transformModel.rotate, transformModel.translate);
-			Matrix4x4 viewMatrixModel = Matrix4x4::Inverse(cameraMatrix);
+			Matrix4x4 viewMatrixModel = cameraViewMatrix;
 			Matrix4x4 projectionMatrixModel = Matrix4x4::MakePerspectiveFovMatrix(0.45f, float(kClientWidth) / float(kClientHeight), 0.1f, 100.0f);
 			Matrix4x4 worldViewProjectionMatrixModel = worldMatrixModel * viewMatrixModel * projectionMatrixModel;
 			transformationMatrixDataModel->WVP = worldViewProjectionMatrixModel;
@@ -1071,7 +1050,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 #pragma endregion
 
 #ifdef USE_IMGUI
-			Vector2 mousePos = GetMousePos(hwnd);
+			Vector2 mousePos = Kujaku::Input::GetMousePos();
 
 			ImGui::Begin("Debug Window");
 			ImGui::Text("mousePosX : %f, mousePosY : %f", mousePos.x, mousePos.y);
@@ -1087,6 +1066,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			ImGui::DragFloat2("UVScale", &uvTransformSprite.scale.x, 0.01f, -10.0f, 10.0f);
 			ImGui::SliderAngle("UVRotate", &uvTransformSprite.rotate.z);
 			ImGui::End();
+
 #endif // USE_IMGUI
 
 			///
@@ -1600,16 +1580,6 @@ MaterialData LoadMaterialTemplateFile(const std::string& directoryPath, const st
 	return materialData;
 }
 
-Vector2 GetMousePos(HWND hwnd) {
-	POINT mousePoint;
-	// マウスカーソルのスクリーン座標を取得
-	GetCursorPos(&mousePoint);
-
-	// スクリーン座標を指定のウィンドウのクライアント領域での座標に変換
-	ScreenToClient(hwnd, &mousePoint);
-
-	return Vector2{static_cast<float>(mousePoint.x), static_cast<float>(mousePoint.y)};
-}
 
 ModelData LoadObjFile(const std::string& directoryPath, const std::string& filename) {
 	ModelData modelData;
