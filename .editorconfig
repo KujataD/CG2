@@ -1,4 +1,5 @@
-[ *. {cpp,h}]
+[*.{cpp,h}]
+
 charset = utf-8
 # スペルミスをintellisense上での「エラー」として扱う
 spelling_error_severity = error
